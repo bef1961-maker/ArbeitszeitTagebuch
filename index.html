@@ -14,11 +14,12 @@
         input, select, button { width: 100%; padding: 10px; font-size: 15px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
         .row { display: flex; gap: 10px; }
         .row > div { flex: 1; }
-        button { margin-top: 12px; background: #007aff; color: white; font-weight: bold; border: none; cursor: pointer; }
+        button { margin-top: 10px; background: #007aff; color: white; font-weight: bold; border: none; cursor: pointer; border-radius: 8px; }
         button:active { opacity: 0.8; }
-        .btn-secondary { background: #8e8e93; }
+        .btn-pause { background: #ff9500; }
         .btn-success { background: #34c759; }
         .entry-item { background: #f9f9f9; border-left: 4px solid #007aff; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-size: 14px; }
+        .entry-pause { border-left-color: #ff9500; }
     </style>
 </head>
 <body>
@@ -34,7 +35,7 @@
         <div class="row">
             <div>
                 <label for="timeFrom">Von:</label>
-                <input type="time" id="timeFrom">
+                <input type="time" id="timeFrom" onchange="adjustToTime()">
             </div>
             <div>
                 <label for="timeTo">Bis:</label>
@@ -55,6 +56,7 @@
         <select id="descriptionSelect"></select>
 
         <button onclick="addEntry()" class="btn-success">+ Eintrag speichern</button>
+        <button onclick="addPause()" class="btn-pause">+ Pause eintragen (30 Min)</button>
     </div>
 
     <div class="card">
@@ -76,10 +78,13 @@
             LoggedEntries: []
         };
 
-        // Heutiges Datum als Standard setzen
-        document.getElementById('workDate').valueAsDate = new Date();
-
         window.onload = function() {
+            document.getElementById('workDate').valueAsDate = new Date();
+            
+            // Standardzeiten: Start 06:00, Ende 08:00 (2 Std)
+            document.getElementById('timeFrom').value = "06:00";
+            document.getElementById('timeTo').value = "08:00";
+
             const saved = localStorage.getItem('arbeitszeit_data');
             if (saved) {
                 db = JSON.parse(saved);
@@ -88,6 +93,28 @@
                 renderEntries();
             }
         };
+
+        function addMinutesToTime(timeStr, minutesToAdd) {
+            let [hours, minutes] = timeStr.split(':').map(Number);
+            let date = new Date();
+            date.setHours(hours, minutes + minutesToAdd, 0);
+            let h = String(date.getHours()).padStart(2, '0');
+            let m = String(date.getMinutes()).padStart(2, '0');
+            return `${h}:${m}`;
+        }
+
+        function adjustToTime() {
+            const from = document.getElementById('timeFrom').value;
+            if (from) {
+                document.getElementById('timeTo').value = addMinutesToTime(from, 120);
+            }
+        }
+
+        function advanceTimes(minutes = 120) {
+            const currentTo = document.getElementById('timeTo').value;
+            document.getElementById('timeFrom').value = currentTo;
+            document.getElementById('timeTo').value = addMinutesToTime(currentTo, minutes);
+        }
 
         function saveData() {
             localStorage.setItem('arbeitszeit_data', JSON.stringify(db));
@@ -150,7 +177,31 @@
             db.LoggedEntries.push(entry);
             saveData();
             renderEntries();
-            alert('Eintrag erfolgreich gespeichert!');
+            
+            // Zeiten automatisch weiterstellen (Endzeit -> neue Startzeit, +2 Stunden)
+            advanceTimes(120);
+        }
+
+        function addPause() {
+            const name = document.getElementById('userName').value;
+            const date = document.getElementById('workDate').value;
+            const from = document.getElementById('timeFrom').value;
+            // Pause ist standardmäßig 30 Minuten lang
+            const to = addMinutesToTime(from, 30);
+
+            if (!date || !from) {
+                alert('Bitte Datum und Von-Zeit ausfüllen!');
+                return;
+            }
+
+            const entry = { name, date, from, to, service: 'Pause', activity: 'Mittag/Pause', desc: 'Pause', id: Date.now(), isPause: true };
+            db.LoggedEntries.push(entry);
+            saveData();
+            renderEntries();
+
+            // Nach der 30-Minuten-Pause Startzeit anpassen und wieder 2 Stunden Arbeitszeit vorgeben
+            document.getElementById('timeFrom').value = to;
+            document.getElementById('timeTo').value = addMinutesToTime(to, 120);
         }
 
         function renderEntries() {
@@ -162,7 +213,7 @@
             container.innerHTML = '';
             db.LoggedEntries.forEach(item => {
                 const div = document.createElement('div');
-                div.className = 'entry-item';
+                div.className = item.isPause ? 'entry-item entry-pause' : 'entry-item';
                 div.innerHTML = `<b>${item.date} (${item.from} - ${item.to})</b><br>` +
                                 `<b>Dienst:</b> ${item.service} | <b>Tätigkeit:</b> ${item.activity}<br>` +
                                 `<b>Details:</b> ${item.desc}`;
