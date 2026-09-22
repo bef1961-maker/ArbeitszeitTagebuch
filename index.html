@@ -45,7 +45,8 @@
         }
         .row {
             display: flex;
-            gap: 10px;
+            gap: 8px;
+            align-items: center;
         }
         .row > div {
             flex: 1;
@@ -61,6 +62,17 @@
             cursor: pointer;
             margin-top: 12px;
             text-align: center;
+        }
+        .btn-icon {
+            width: 44px;
+            height: 42px;
+            padding: 0;
+            margin-top: 0;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
         }
         .btn-primary { background-color: #007aff; color: #fff; }
         .btn-secondary { background-color: #5856d6; color: #fff; }
@@ -97,18 +109,22 @@
     <div class="card">
         <h2>1. Stammdaten & Tag</h2>
         <label for="userName">Mitarbeiter / Name:</label>
-        <input type="text" id="userName" placeholder="Dein Name">
+        <div class="row">
+            <select id="userName" onchange="saveLocalAndCloud()"></select>
+            <button class="btn btn-primary btn-icon" onclick="addEmployeeName()" title="Neuen Namen hinzufügen">+</button>
+            <button class="btn btn-danger btn-icon" onclick="deleteEmployeeName()" title="Ausgewählten Namen löschen">🗑️</button>
+        </div>
 
         <label for="workDate">Datum:</label>
         <input type="date" id="workDate">
 
-        <div class="row">
+        <div class="row" style="margin-top: 10px;">
             <div>
-                <label for="timeFrom">Von:</label>
+                <label for="timeFrom" style="margin-top:0;">Von:</label>
                 <input type="time" id="timeFrom" onchange="adjustToTime()">
             </div>
             <div>
-                <label for="timeTo">Bis:</label>
+                <label for="timeTo" style="margin-top:0;">Bis:</label>
                 <input type="time" id="timeTo">
             </div>
         </div>
@@ -150,6 +166,7 @@
 
         let db = {
             userName: "",
+            employees: [],
             ServiceToActivities: {},
             ActivityToDescriptions: {},
             LoggedEntries: []
@@ -164,7 +181,7 @@
             if (localData) {
                 try {
                     db = JSON.parse(localData);
-                    if (db.userName) document.getElementById('userName').value = db.userName;
+                    populateEmployees();
                     populateServices();
                     renderEntries();
                 } catch(e){}
@@ -179,6 +196,60 @@
                 el.innerText = text;
                 el.style.color = color;
                 el.style.backgroundColor = bg;
+            }
+        }
+
+        function populateEmployees() {
+            const uSelect = document.getElementById('userName');
+            if (!uSelect) return;
+            
+            if (!db.employees) db.employees = [];
+            
+            // Standardwert sichern, falls Liste leer ist
+            if (db.employees.length === 0 && db.userName) {
+                db.employees.push(db.userName);
+            }
+
+            uSelect.innerHTML = '';
+            db.employees.forEach(emp => {
+                let opt = document.createElement('option');
+                opt.value = emp;
+                opt.innerText = emp;
+                uSelect.appendChild(opt);
+            });
+
+            if (db.userName && db.employees.includes(db.userName)) {
+                uSelect.value = db.userName;
+            } else if (db.employees.length > 0) {
+                db.userName = db.employees[0];
+                uSelect.value = db.userName;
+            }
+        }
+
+        async function addEmployeeName() {
+            const name = prompt("Bitte den neuen Mitarbeiternamen eingeben:");
+            if (name && name.trim() !== "") {
+                const cleanName = name.trim();
+                if (!db.employees) db.employees = [];
+                if (!db.employees.includes(cleanName)) {
+                    db.employees.push(cleanName);
+                }
+                db.userName = cleanName;
+                populateEmployees();
+                await saveLocalAndCloud();
+            }
+        }
+
+        async function deleteEmployeeName() {
+            const uSelect = document.getElementById('userName');
+            const selected = uSelect.value;
+            if (!selected) return;
+
+            if (confirm(`Möchtest du '${selected}' wirklich aus der Namensliste löschen?`)) {
+                db.employees = db.employees.filter(emp => emp !== selected);
+                db.userName = db.employees.length > 0 ? db.employees[0] : "";
+                populateEmployees();
+                await saveLocalAndCloud();
             }
         }
 
@@ -257,13 +328,12 @@
                     if (data && typeof data === 'object') {
                         db = data;
                         
+                        if (!db.employees) db.employees = [];
                         if (!db.ServiceToActivities) db.ServiceToActivities = {};
                         if (!db.ActivityToDescriptions) db.ActivityToDescriptions = {};
                         if (!db.LoggedEntries) db.LoggedEntries = [];
                         
-                        if (db.userName) document.getElementById('userName').value = db.userName;
-                        
-                        localStorage.setItem('arbeitszeit_db', JSON.stringify(db));
+                        populateEmployees();
                         populateServices();
                         renderEntries();
                         setStatus("● Mit Firebase Cloud synchronisiert", "#2e7d32", "#e8f5e9");
@@ -280,7 +350,9 @@
         }
 
         async function saveLocalAndCloud() {
-            db.userName = document.getElementById('userName').value;
+            const uSelect = document.getElementById('userName');
+            if (uSelect) db.userName = uSelect.value;
+
             localStorage.setItem('arbeitszeit_db', JSON.stringify(db));
 
             setStatus("⏳ Speichere in Cloud...", "#007aff", "#eef6ff");
@@ -389,6 +461,7 @@
                 const div = document.createElement('div');
                 div.className = item.isPause ? 'entry-item entry-pause' : 'entry-item';
                 div.innerHTML = `<b>${item.date} (${item.from} - ${item.to})</b><br>` +
+                                `<b>Mitarbeiter:</b> ${item.name || 'Unbekannt'}<br>` +
                                 `<b>Dienst:</b> ${item.service} | <b>Tätigkeit:</b> ${item.activity}<br>` +
                                 `<b>Details:</b> ${item.desc}`;
                 container.appendChild(div);
@@ -402,7 +475,11 @@
                     const imported = JSON.parse(e.target.result);
                     db.ServiceToActivities = imported.ServiceToActivities || {};
                     db.ActivityToDescriptions = imported.ActivityToDescriptions || {};
+                    if (imported.employees) db.employees = imported.employees;
+                    if (imported.userName) db.userName = imported.userName;
                     if (imported.LoggedEntries) db.LoggedEntries = imported.LoggedEntries;
+                    
+                    populateEmployees();
                     populateServices();
                     renderEntries();
                     await saveLocalAndCloud();
