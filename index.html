@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ArbeitszeitTagebuch</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Tagebuch">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/000000/time--v1.png">
+    <style>
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: #f2f2f7; margin: 0; padding: 15px; color: #1c1c1e; }
+        .card { background: white; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        h2 { margin-top: 0; font-size: 1.1rem; color: #007aff; }
+        label { font-weight: 600; display: block; margin-bottom: 6px; font-size: 0.9rem; }
+        select, input[type="text"] { width: 100%; padding: 10px; border: 1px solid #c7c7cc; border-radius: 8px; font-size: 1rem; margin-bottom: 10px; outline: none; }
+        .checkbox-group { max-height: 200px; overflow-y: auto; border: 1px solid #e5e5ea; border-radius: 8px; padding: 8px; margin-bottom: 10px; }
+        .checkbox-item { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #f2f2f7; }
+        .checkbox-item:last-child { border-bottom: none; }
+        .checkbox-item input { margin-right: 10px; transform: scale(1.2); }
+        .btn-row { display: flex; gap: 8px; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 8px; background-color: #007aff; color: white; font-weight: bold; font-size: 1rem; cursor: pointer; }
+        button.secondary { background-color: #8e8e93; }
+        button.success { background-color: #34c759; }
+        .file-actions { display: flex; gap: 10px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>1. Dienstart & Hauptkategorie</h2>
+        <label for="serviceSelect">Dienstart:</label>
+        <select id="serviceSelect" onchange="onServiceChanged()"></select>
+
+        <label for="activitySelect">Hauptkategorie:</label>
+        <select id="activitySelect" onchange="onActivityChanged()"></select>
+
+        <div class="btn-row">
+            <button class="secondary" onclick="addMainActivity()">+ Neue Hauptkategorie</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>2. Tätigkeiten / Beschreibungen</h2>
+        <div id="descriptionsContainer" class="checkbox-group"></div>
+
+        <label for="newDescInput">Neue Beschreibung hinzufügen:</label>
+        <div class="btn-row">
+            <input type="text" id="newDescInput" placeholder="Z. B. Überprüfen">
+            <button style="flex: 0 0 50px;" onclick="addDescription()">➕</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>3. Daten-Synchronisation</h2>
+        <div class="file-actions">
+            <button class="secondary" onclick="exportJson()">Export (JSON)</button>
+            <button class="secondary" onclick="document.getElementById('importFile').click()">Import (JSON)</button>
+            <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJson(event)">
+        </div>
+    </div>
+
+    <script>
+        // Service Worker Registrierung (jetzt korrekt im script-Tag)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(() => console.log('Service Worker aktiv'))
+                .catch(err => console.log('Service Worker Fehler:', err));
+        }
+
+        // Standard-Struktur wie in C#
+        let historyData = {
+            ServiceToActivities: {
+                "Innendienst": [],
+                "Außendienst": []
+            },
+            ActivityToDescriptions: {}
+        };
+
+        // Beim Starten laden
+        window.onload = function() {
+            loadLocalData();
+            renderServices();
+        };
+
+        function loadLocalData() {
+            const saved = localStorage.getItem("historyData");
+            if (saved) {
+                try { historyData = JSON.parse(saved); } catch(e) {}
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem("historyData", JSON.stringify(historyData));
+        }
+
+        function renderServices() {
+            const serviceSelect = document.getElementById("serviceSelect");
+            serviceSelect.innerHTML = "";
+            for (let service in historyData.ServiceToActivities) {
+                let opt = document.createElement("option");
+                opt.value = service;
+                opt.textContent = service;
+                serviceSelect.appendChild(opt);
+            }
+            onServiceChanged();
+        }
+
+        function onServiceChanged() {
+            const currentService = document.getElementById("serviceSelect").value;
+            const activitySelect = document.getElementById("activitySelect");
+            activitySelect.innerHTML = "";
+
+            const activities = historyData.ServiceToActivities[currentService] || [];
+            activities.forEach(act => {
+                let opt = document.createElement("option");
+                opt.value = act;
+                opt.textContent = act;
+                activitySelect.appendChild(opt);
+            });
+
+            onActivityChanged();
+        }
+
+        function onActivityChanged() {
+            const currentActivity = document.getElementById("activitySelect").value;
+            const container = document.getElementById("descriptionsContainer");
+            container.innerHTML = "";
+
+            if (!currentActivity) return;
+
+            const descs = historyData.ActivityToDescriptions[currentActivity] || [];
+            descs.forEach((desc, index) => {
+                let div = document.createElement("div");
+                div.className = "checkbox-item";
+                div.innerHTML = `<input type="checkbox" id="desc_${index}" value="${desc}">
+                                 <label for="desc_${index}" style="margin:0;">${desc}</label>`;
+                container.appendChild(div);
+            });
+        }
+
+        function addMainActivity() {
+            const currentService = document.getElementById("serviceSelect").value;
+            const name = prompt("Name der neuen Hauptkategorie:");
+            if (name && name.trim()) {
+                const cleanName = name.trim();
+                if (!historyData.ServiceToActivities[currentService].includes(cleanName)) {
+                    historyData.ServiceToActivities[currentService].push(cleanName);
+                    saveData();
+                    onServiceChanged();
+                    document.getElementById("activitySelect").value = cleanName;
+                    onActivityChanged();
+                }
+            }
+        }
+
+        function addDescription() {
+            const currentActivity = document.getElementById("activitySelect").value;
+            const input = document.getElementById("newDescInput");
+            const text = input.value.trim();
+
+            if (!currentActivity) {
+                alert("Bitte wähle zuerst eine Hauptkategorie aus.");
+                return;
+            }
+
+            if (text) {
+                if (!historyData.ActivityToDescriptions[currentActivity]) {
+                    historyData.ActivityToDescriptions[currentActivity] = [];
+                }
+                if (!historyData.ActivityToDescriptions[currentActivity].includes(text)) {
+                    historyData.ActivityToDescriptions[currentActivity].push(text);
+                    saveData();
+                    onActivityChanged();
+                }
+                input.value = "";
+            }
+        }
+
+        // --- Export / Import ---
+        function exportJson() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(historyData, null, 2));
+            const dlAnchorElem = document.createElement('a');
+            dlAnchorElem.setAttribute("href", dataStr);
+            dlAnchorElem.setAttribute("download", "history.json");
+            dlAnchorElem.click();
+        }
+
+        function importJson(event) {
+            const fileReader = new FileReader();
+            fileReader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (parsed.ServiceToActivities && parsed.ActivityToDescriptions) {
+                        historyData = parsed;
+                        saveData();
+                        renderServices();
+                        alert("history.json erfolgreich importiert!");
+                    } else {
+                        alert("Ungültiges JSON-Format.");
+                    }
+                } catch(ex) {
+                    alert("Fehler beim Lesen der Datei.");
+                }
+            };
+            fileReader.readAsText(event.target.files[0]);
+        }
+    </script>
+</body>
+</html>
