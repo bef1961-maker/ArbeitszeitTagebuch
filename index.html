@@ -148,7 +148,8 @@
         // WICHTIG: Setze hier deine exakte Firebase-URL ein!
         // Zum Beispiel: "https://arbeitszeittagebuch-default-rtdb.firebaseio.com"
         // -------------------------------------------------------------
-        const BASE_FIREBASE_URL = "https://arbeitszeittagebuch-default-rtdb.firebaseio.com"; 
+        // TRAGE HIER DEINE EXAKTE FIREBASE-URL EIN (ohne / am Ende):
+        const BASE_FIREBASE_URL = "https://bef1961-maker.github.io/ArbeitszeitTagebuch/"; 
         
         const FIREBASE_URL = BASE_FIREBASE_URL.replace(/\/$/, "") + "/history.json";
 
@@ -164,7 +165,6 @@
             document.getElementById('timeFrom').value = "06:00";
             document.getElementById('timeTo').value = "08:00";
 
-            // 1. Zuerst lokales Backup laden (damit das Formular auf keinen Fall sperrt)
             let localData = localStorage.getItem('arbeitszeit_db');
             if (localData) {
                 try {
@@ -175,7 +175,6 @@
                 } catch(e){}
             }
 
-            // 2. Dann Cloud-Daten abrufen
             loadFromFirebase();
         };
 
@@ -190,9 +189,8 @@
 
         async function loadFromFirebase() {
             try {
-                // Timeout nach 5 Sekunden, damit die Seite niemals einfriert
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const timeoutId = setTimeout(() => controller.abort(), 7000);
 
                 const response = await fetch(FIREBASE_URL, { signal: controller.signal });
                 clearTimeout(timeoutId);
@@ -216,10 +214,9 @@
                 }
             } catch (err) {
                 console.error("Firebase Ladefehler:", err);
-                setStatus("⚠️ Verbindung fehlgeschlagen! Bitte Firebase-URL prüfen.", "#c62828", "#ffebee");
+                setStatus("⚠️ URL: " + FIREBASE_URL + " nicht erreichbar", "#c62828", "#ffebee");
             }
         }
-
         async function saveLocalAndCloud() {
             db.userName = document.getElementById('userName').value;
             localStorage.setItem('arbeitszeit_db', JSON.stringify(db));
