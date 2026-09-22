@@ -7,20 +7,90 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#007aff">
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 15px; background: #f2f2f7; color: #1c1c1e; }
-        .card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-        h2 { font-size: 18px; margin-top: 0; margin-bottom: 12px; color: #007aff; border-bottom: 1px solid #eee; padding-bottom: 6px; }
-        label { display: block; font-size: 13px; font-weight: 600; margin-top: 10px; margin-bottom: 4px; color: #666; }
-        input, select, button { width: 100%; padding: 10px; font-size: 15px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
-        .row { display: flex; gap: 10px; }
-        .row > div { flex: 1; }
-        button { margin-top: 10px; background: #007aff; color: white; font-weight: bold; border: none; cursor: pointer; border-radius: 8px; }
-        button:active { opacity: 0.8; }
-        .btn-pause { background: #ff9500; }
-        .btn-success { background: #34c759; }
-        .entry-item { background: #f9f9f9; border-left: 4px solid #007aff; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-size: 14px; }
-        .entry-pause { border-left-color: #ff9500; }
-        .status-sync { font-size: 13px; font-weight: bold; color: #34c759; text-align: center; margin-bottom: 10px; padding: 6px; background: #e8f8ec; border-radius: 6px; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            margin: 0; 
+            padding: 15px; 
+            background: #f2f2f7; 
+            color: #1c1c1e; 
+        }
+        .card { 
+            background: white; 
+            border-radius: 12px; 
+            padding: 15px; 
+            margin-bottom: 15px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05); 
+        }
+        h2 { 
+            font-size: 18px; 
+            margin-top: 0; 
+            margin-bottom: 12px; 
+            color: #007aff; 
+            border-bottom: 1px solid #eee; 
+            padding-bottom: 6px; 
+        }
+        label { 
+            display: block; 
+            font-size: 13px; 
+            font-weight: 600; 
+            margin-top: 10px; 
+            margin-bottom: 4px; 
+            color: #666; 
+        }
+        input, select, button { 
+            width: 100%; 
+            padding: 10px; 
+            font-size: 15px; 
+            border-radius: 8px; 
+            border: 1px solid #ccc; 
+            box-sizing: border-box; 
+        }
+        .row { 
+            display: flex; 
+            gap: 10px; 
+        }
+        .row > div { 
+            flex: 1; 
+        }
+        button { 
+            margin-top: 10px; 
+            background: #007aff; 
+            color: white; 
+            font-weight: bold; 
+            border: none; 
+            cursor: pointer; 
+            border-radius: 8px; 
+        }
+        button:active { 
+            opacity: 0.8; 
+        }
+        .btn-pause { 
+            background: #ff9500; 
+        }
+        .btn-success { 
+            background: #34c759; 
+        }
+        .entry-item { 
+            background: #f9f9f9; 
+            border-left: 4px solid #007aff; 
+            padding: 10px; 
+            margin-bottom: 8px; 
+            border-radius: 4px; 
+            font-size: 14px; 
+        }
+        .entry-pause { 
+            border-left-color: #ff9500; 
+        }
+        .status-sync { 
+            font-size: 13px; 
+            font-weight: bold; 
+            color: #007aff; 
+            text-align: center; 
+            margin-bottom: 10px; 
+            padding: 8px; 
+            background: #eef6ff; 
+            border-radius: 6px; 
+        }
     </style>
 </head>
 <body>
@@ -68,13 +138,19 @@
     </div>
 
     <div class="card">
-        <h2>4. Stammdaten Initialisieren (Einmalig)</h2>
-        <label for="importFile">Einmalig Stammdaten-JSON hochladen:</label>
+        <h2>4. Initialisierung</h2>
+        <label for="importFile">Stammdaten-JSON importieren:</label>
         <input type="file" id="importFile" accept=".json" onchange="importDataToCloud(event)">
     </div>
 
     <script>
-        const FIREBASE_URL = "https://console.firebase.google.com/project/arbeitszeittagebuch/database/arbeitszeittagebuch-default-rtdb/data/~2F";
+        // -------------------------------------------------------------
+        // WICHTIG: Setze hier deine exakte Firebase-URL ein!
+        // Zum Beispiel: "https://arbeitszeittagebuch-default-rtdb.firebaseio.com"
+        // -------------------------------------------------------------
+        const BASE_FIREBASE_URL = "https://DEINE-FIREBASE-URL.firebasedatabase.app"; 
+        
+        const FIREBASE_URL = BASE_FIREBASE_URL.replace(/\/$/, "") + "/history.json";
 
         let db = {
             userName: "",
@@ -83,54 +159,86 @@
             LoggedEntries: []
         };
 
-        window.onload = async function() {
+        window.onload = function() {
             document.getElementById('workDate').valueAsDate = new Date();
             document.getElementById('timeFrom').value = "06:00";
             document.getElementById('timeTo').value = "08:00";
 
-            await loadFromFirebase();
+            // 1. Zuerst lokales Backup laden (damit das Formular auf keinen Fall sperrt)
+            let localData = localStorage.getItem('arbeitszeit_db');
+            if (localData) {
+                try {
+                    db = JSON.parse(localData);
+                    if (db.userName) document.getElementById('userName').value = db.userName;
+                    populateServices();
+                    renderEntries();
+                } catch(e){}
+            }
+
+            // 2. Dann Cloud-Daten abrufen
+            loadFromFirebase();
         };
+
+        function setStatus(text, color, bg) {
+            const el = document.getElementById('syncStatus');
+            if (el) {
+                el.innerText = text;
+                el.style.color = color;
+                el.style.backgroundColor = bg;
+            }
+        }
 
         async function loadFromFirebase() {
             try {
-                const response = await fetch(FIREBASE_URL);
+                // Timeout nach 5 Sekunden, damit die Seite niemals einfriert
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                const response = await fetch(FIREBASE_URL, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
                 if (response.ok) {
                     const data = await response.json();
-                    if (data) {
+                    if (data && typeof data === 'object') {
                         db = data;
                         if (!db.LoggedEntries) db.LoggedEntries = [];
                         if (db.userName) document.getElementById('userName').value = db.userName;
+                        
+                        localStorage.setItem('arbeitszeit_db', JSON.stringify(db));
                         populateServices();
                         renderEntries();
-                        document.getElementById('syncStatus').innerText = "● Mit Firebase Cloud synchronisiert";
-                        document.getElementById('syncStatus').style.color = "#34c759";
+                        setStatus("● Mit Firebase Cloud synchronisiert", "#2e7d32", "#e8f5e9");
                     } else {
-                        document.getElementById('syncStatus').innerText = "⚠️ Bitte einmalig Stammdaten-JSON importieren";
-                        document.getElementById('syncStatus').style.color = "#ff9500";
+                        setStatus("⚠️ Cloud ist noch leer! Bitte Punkt 4 (JSON importieren) nutzen.", "#e65100", "#fff3e0");
                     }
+                } else {
+                    setStatus("⚠️ Firebase Fehler " + response.status + " (Sicherheitsregeln prüfen!)", "#c62828", "#ffebee");
                 }
             } catch (err) {
                 console.error("Firebase Ladefehler:", err);
-                document.getElementById('syncStatus').innerText = "⚠️ Verbindungsfehler";
-                document.getElementById('syncStatus').style.color = "#ff3b30";
+                setStatus("⚠️ Verbindung fehlgeschlagen! Bitte Firebase-URL prüfen.", "#c62828", "#ffebee");
             }
         }
 
         async function saveLocalAndCloud() {
             db.userName = document.getElementById('userName').value;
-            document.getElementById('syncStatus').innerText = "⏳ Speichere in Cloud...";
+            localStorage.setItem('arbeitszeit_db', JSON.stringify(db));
+
+            setStatus("⏳ Speichere in Cloud...", "#007aff", "#eef6ff");
             try {
-                await fetch(FIREBASE_URL, {
+                const response = await fetch(FIREBASE_URL, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(db)
                 });
-                document.getElementById('syncStatus').innerText = "● Automatisch in Cloud gespeichert";
-                document.getElementById('syncStatus').style.color = "#34c759";
+                if (response.ok) {
+                    setStatus("● Automatisch in Cloud gespeichert", "#2e7d32", "#e8f5e9");
+                } else {
+                    setStatus("⚠️ Speichern fehlgeschlagen (Fehler " + response.status + ")", "#c62828", "#ffebee");
+                }
             } catch (err) {
                 console.error("Firebase Speicherfehler:", err);
-                document.getElementById('syncStatus').innerText = "⚠️ Speicherfehler";
-                document.getElementById('syncStatus').style.color = "#ff3b30";
+                setStatus("⚠️ Lokale Speicherung OK (Cloud Offline)", "#e65100", "#fff3e0");
             }
         }
 
