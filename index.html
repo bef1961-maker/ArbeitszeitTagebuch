@@ -18,18 +18,18 @@
         button:active { opacity: 0.8; }
         .btn-pause { background: #ff9500; }
         .btn-success { background: #34c759; }
-        .btn-secondary { background: #5856d6; }
         .entry-item { background: #f9f9f9; border-left: 4px solid #007aff; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-size: 14px; }
         .entry-pause { border-left-color: #ff9500; }
-        textarea { width: 100%; height: 100px; margin-top: 10px; font-family: monospace; font-size: 11px; padding: 8px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
+        .status-sync { font-size: 13px; font-weight: bold; color: #34c759; text-align: center; margin-bottom: 10px; padding: 6px; background: #e8f8ec; border-radius: 6px; }
     </style>
 </head>
 <body>
 
     <div class="card">
+        <div id="syncStatus" class="status-sync">● Cloud-Verbindung wird hergestellt...</div>
         <h2>1. Stammdaten & Tag</h2>
         <label for="userName">Mitarbeiter / Name:</label>
-        <input type="text" id="userName" placeholder="Dein Name" onchange="saveData()">
+        <input type="text" id="userName" placeholder="Dein Name" onchange="saveLocalAndCloud()">
 
         <label for="workDate">Datum:</label>
         <input type="date" id="workDate">
@@ -68,39 +68,71 @@
     </div>
 
     <div class="card">
-        <h2>4. Daten-Synchronisation</h2>
-        <button onclick="exportDataiOS()" class="btn-secondary">Export für iPhone (Teilen / E-Mail)</button>
-        <button onclick="exportDataDirect()" style="margin-top: 8px;">Standard Download (JSON)</button>
-        
-        <label for="importFile" style="margin-top: 15px;">Import (JSON laden):</label>
-        <input type="file" id="importFile" accept=".json" onchange="importData(event)">
+        <h2>4. Stammdaten Initialisieren (Einmalig)</h2>
+        <label for="importFile">Einmalig Stammdaten-JSON hochladen:</label>
+        <input type="file" id="importFile" accept=".json" onchange="importDataToCloud(event)">
     </div>
 
     <script>
+        const FIREBASE_URL = "https://arbeitszeittagebuch-default-rtdb.firebaseio.com/history.json";
+
         let db = {
+            userName: "",
             ServiceToActivities: {},
             ActivityToDescriptions: {},
             LoggedEntries: []
         };
 
-        window.onload = function() {
+        window.onload = async function() {
             document.getElementById('workDate').valueAsDate = new Date();
             document.getElementById('timeFrom').value = "06:00";
             document.getElementById('timeTo').value = "08:00";
 
-            const saved = localStorage.getItem('arbeitszeit_data');
-            if (saved) {
-                try {
-                    db = JSON.parse(saved);
-                    if (!db.LoggedEntries) db.LoggedEntries = [];
-                    if (db.userName) document.getElementById('userName').value = db.userName;
-                    populateServices();
-                    renderEntries();
-                } catch(e) {
-                    console.error("Fehler beim Laden", e);
-                }
-            }
+            await loadFromFirebase();
         };
+
+        async function loadFromFirebase() {
+            try {
+                const response = await fetch(FIREBASE_URL);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data) {
+                        db = data;
+                        if (!db.LoggedEntries) db.LoggedEntries = [];
+                        if (db.userName) document.getElementById('userName').value = db.userName;
+                        populateServices();
+                        renderEntries();
+                        document.getElementById('syncStatus').innerText = "● Mit Firebase Cloud synchronisiert";
+                        document.getElementById('syncStatus').style.color = "#34c759";
+                    } else {
+                        document.getElementById('syncStatus').innerText = "⚠️ Bitte einmalig Stammdaten-JSON importieren";
+                        document.getElementById('syncStatus').style.color = "#ff9500";
+                    }
+                }
+            } catch (err) {
+                console.error("Firebase Ladefehler:", err);
+                document.getElementById('syncStatus').innerText = "⚠️ Verbindungsfehler";
+                document.getElementById('syncStatus').style.color = "#ff3b30";
+            }
+        }
+
+        async function saveLocalAndCloud() {
+            db.userName = document.getElementById('userName').value;
+            document.getElementById('syncStatus').innerText = "⏳ Speichere in Cloud...";
+            try {
+                await fetch(FIREBASE_URL, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(db)
+                });
+                document.getElementById('syncStatus').innerText = "● Automatisch in Cloud gespeichert";
+                document.getElementById('syncStatus').style.color = "#34c759";
+            } catch (err) {
+                console.error("Firebase Speicherfehler:", err);
+                document.getElementById('syncStatus').innerText = "⚠️ Speicherfehler";
+                document.getElementById('syncStatus').style.color = "#ff3b30";
+            }
+        }
 
         function addMinutesToTime(timeStr, minutesToAdd) {
             let [hours, minutes] = timeStr.split(':').map(Number);
@@ -122,11 +154,6 @@
             const currentTo = document.getElementById('timeTo').value;
             document.getElementById('timeFrom').value = currentTo;
             document.getElementById('timeTo').value = addMinutesToTime(currentTo, minutes);
-        }
-
-        function saveData() {
-            db.userName = document.getElementById('userName').value;
-            localStorage.setItem('arbeitszeit_data', JSON.stringify(db));
         }
 
         function populateServices() {
@@ -168,7 +195,7 @@
             });
         }
 
-        function addEntry() {
+        async function addEntry() {
             const name = document.getElementById('userName').value;
             const date = document.getElementById('workDate').value;
             const from = document.getElementById('timeFrom').value;
@@ -183,13 +210,15 @@
             }
 
             const entry = { name, date, from, to, service, activity, desc, id: Date.now() };
+            if (!db.LoggedEntries) db.LoggedEntries = [];
             db.LoggedEntries.push(entry);
-            saveData();
+            
             renderEntries();
+            await saveLocalAndCloud();
             advanceTimes(120);
         }
 
-        function addPause() {
+        async function addPause() {
             const name = document.getElementById('userName').value;
             const date = document.getElementById('workDate').value;
             const from = document.getElementById('timeFrom').value;
@@ -201,19 +230,21 @@
             }
 
             const entry = { name, date, from, to, service: 'Pause', activity: 'Mittag/Pause', desc: 'Pause', id: Date.now(), isPause: true };
+            if (!db.LoggedEntries) db.LoggedEntries = [];
             db.LoggedEntries.push(entry);
-            saveData();
+            
             renderEntries();
+            await saveLocalAndCloud();
 
             document.getElementById('timeFrom').value = to;
             document.getElementById('timeTo').value = addMinutesToTime(to, 120);
         }
 
-        function clearEntries() {
-            if (confirm("Möchtest du wirklich alle erfassten Einträge aus der Liste löschen?")) {
+        async function clearEntries() {
+            if (confirm("Möchtest du wirklich alle erfassten Einträge löschen?")) {
                 db.LoggedEntries = [];
-                saveData();
                 renderEntries();
+                await saveLocalAndCloud();
             }
         }
 
@@ -234,60 +265,20 @@
             });
         }
 
-        // Neuer intelligenter Export für iOS/Safari: Öffnet direkt das Teilen-Menü von Apple
-        async function exportDataiOS() {
-            saveData();
-            const jsonText = JSON.stringify(db, null, 2);
-            const file = new File([jsonText], "history.json", { type: "application/json" });
-
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                try {
-                    await navigator.share({
-                        files: [file],
-                        title: 'history.json',
-                        text: 'ArbeitszeitTagebuch Daten-Export'
-                    });
-                } catch (err) {
-                    if (err.name !== 'AbortError') {
-                        fallbackDownload(jsonText);
-                    }
-                }
-            } else {
-                fallbackDownload(jsonText);
-            }
-        }
-
-        function exportDataDirect() {
-            saveData();
-            fallbackDownload(JSON.stringify(db, null, 2));
-        }
-
-        function fallbackDownload(jsonText) {
-            const blob = new Blob([jsonText], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = "history.json";
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-
-        function importData(event) {
+        function importDataToCloud(event) {
             const reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 try {
                     const imported = JSON.parse(e.target.result);
                     db.ServiceToActivities = imported.ServiceToActivities || {};
                     db.ActivityToDescriptions = imported.ActivityToDescriptions || {};
                     if (imported.LoggedEntries) db.LoggedEntries = imported.LoggedEntries;
-                    saveData();
                     populateServices();
                     renderEntries();
-                    alert('Daten erfolgreich importiert!');
+                    await saveLocalAndCloud();
+                    alert('Stammdaten & Einträge erfolgreich in Firebase hochgeladen!');
                 } catch(err) {
-                    alert('Fehler beim Lesen der Datei.');
+                    alert('Fehler beim Lesen der JSON-Datei.');
                 }
             };
             reader.readAsText(event.target.files[0]);
