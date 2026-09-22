@@ -144,14 +144,9 @@
     </div>
 
     <script>
-        // -------------------------------------------------------------
-        // WICHTIG: Setze hier deine exakte Firebase-URL ein!
-        // Zum Beispiel: "https://arbeitszeittagebuch-default-rtdb.firebaseio.com"
-        // -------------------------------------------------------------
-        // TRAGE HIER DEINE EXAKTE FIREBASE-URL EIN (ohne / am Ende):
-        const BASE_FIREBASE_URL = "https://arbeitszeittagebuch-default-rtdb.europe-west1.firebasedatabase.app";
-        
-        const FIREBASE_URL = BASE_FIREBASE_URL.replace(/\/$/, "") + "/history.json";
+        // Exakte Europe-West1 URL aus deiner Firebase-Konsole
+        const BASE_FIREBASE_URL = "https://arbeitszeittagebuch-default-rtdb.europe-west1.firebasedatabase.app"; 
+        const FIREBASE_URL = BASE_FIREBASE_URL + "/.json";
 
         let db = {
             userName: "",
@@ -165,6 +160,7 @@
             document.getElementById('timeFrom').value = "06:00";
             document.getElementById('timeTo').value = "08:00";
 
+            // 1. Zuerst lokales Backup laden
             let localData = localStorage.getItem('arbeitszeit_db');
             if (localData) {
                 try {
@@ -175,6 +171,7 @@
                 } catch(e){}
             }
 
+            // 2. Cloud abrufen
             loadFromFirebase();
         };
 
@@ -210,13 +207,14 @@
                         setStatus("⚠️ Cloud ist noch leer! Bitte Punkt 4 (JSON importieren) nutzen.", "#e65100", "#fff3e0");
                     }
                 } else {
-                    setStatus("⚠️ Firebase Fehler " + response.status + " (Sicherheitsregeln prüfen!)", "#c62828", "#ffebee");
+                    setStatus("⚠️ Firebase Fehler " + response.status, "#c62828", "#ffebee");
                 }
             } catch (err) {
                 console.error("Firebase Ladefehler:", err);
-                setStatus("⚠️ URL: " + FIREBASE_URL + " nicht erreichbar", "#c62828", "#ffebee");
+                setStatus("⚠️ Verbindung fehlgeschlagen! Bitte Netzwerk prüfen.", "#c62828", "#ffebee");
             }
         }
+
         async function saveLocalAndCloud() {
             db.userName = document.getElementById('userName').value;
             localStorage.setItem('arbeitszeit_db', JSON.stringify(db));
