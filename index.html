@@ -18,8 +18,10 @@
         button:active { opacity: 0.8; }
         .btn-pause { background: #ff9500; }
         .btn-success { background: #34c759; }
+        .btn-secondary { background: #5856d6; }
         .entry-item { background: #f9f9f9; border-left: 4px solid #007aff; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-size: 14px; }
         .entry-pause { border-left-color: #ff9500; }
+        textarea { width: 100%; height: 100px; margin-top: 10px; font-family: monospace; font-size: 11px; padding: 8px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
     </style>
 </head>
 <body>
@@ -27,7 +29,7 @@
     <div class="card">
         <h2>1. Stammdaten & Tag</h2>
         <label for="userName">Mitarbeiter / Name:</label>
-        <input type="text" id="userName" placeholder="Dein Name">
+        <input type="text" id="userName" placeholder="Dein Name" onchange="saveData()">
 
         <label for="workDate">Datum:</label>
         <input type="date" id="workDate">
@@ -62,11 +64,14 @@
     <div class="card">
         <h2>3. Erfasste Einträge</h2>
         <div id="entriesList"><i>Noch keine Einträge erfasst.</i></div>
+        <button onclick="clearEntries()" style="background: #ff3b30; margin-top: 15px;">Erfasste Liste leeren</button>
     </div>
 
     <div class="card">
         <h2>4. Daten-Synchronisation</h2>
-        <button onclick="exportData()">Export (JSON herunterladen)</button>
+        <button onclick="exportDataiOS()" class="btn-secondary">Export für iPhone (Teilen / E-Mail)</button>
+        <button onclick="exportDataDirect()" style="margin-top: 8px;">Standard Download (JSON)</button>
+        
         <label for="importFile" style="margin-top: 15px;">Import (JSON laden):</label>
         <input type="file" id="importFile" accept=".json" onchange="importData(event)">
     </div>
@@ -80,17 +85,20 @@
 
         window.onload = function() {
             document.getElementById('workDate').valueAsDate = new Date();
-            
-            // Standardzeiten: Start 06:00, Ende 08:00 (2 Std)
             document.getElementById('timeFrom').value = "06:00";
             document.getElementById('timeTo').value = "08:00";
 
             const saved = localStorage.getItem('arbeitszeit_data');
             if (saved) {
-                db = JSON.parse(saved);
-                if (!db.LoggedEntries) db.LoggedEntries = [];
-                populateServices();
-                renderEntries();
+                try {
+                    db = JSON.parse(saved);
+                    if (!db.LoggedEntries) db.LoggedEntries = [];
+                    if (db.userName) document.getElementById('userName').value = db.userName;
+                    populateServices();
+                    renderEntries();
+                } catch(e) {
+                    console.error("Fehler beim Laden", e);
+                }
             }
         };
 
@@ -117,6 +125,7 @@
         }
 
         function saveData() {
+            db.userName = document.getElementById('userName').value;
             localStorage.setItem('arbeitszeit_data', JSON.stringify(db));
         }
 
@@ -177,8 +186,6 @@
             db.LoggedEntries.push(entry);
             saveData();
             renderEntries();
-            
-            // Zeiten automatisch weiterstellen (Endzeit -> neue Startzeit, +2 Stunden)
             advanceTimes(120);
         }
 
@@ -186,7 +193,6 @@
             const name = document.getElementById('userName').value;
             const date = document.getElementById('workDate').value;
             const from = document.getElementById('timeFrom').value;
-            // Pause ist standardmäßig 30 Minuten lang
             const to = addMinutesToTime(from, 30);
 
             if (!date || !from) {
@@ -199,9 +205,16 @@
             saveData();
             renderEntries();
 
-            // Nach der 30-Minuten-Pause Startzeit anpassen und wieder 2 Stunden Arbeitszeit vorgeben
             document.getElementById('timeFrom').value = to;
             document.getElementById('timeTo').value = addMinutesToTime(to, 120);
+        }
+
+        function clearEntries() {
+            if (confirm("Möchtest du wirklich alle erfassten Einträge aus der Liste löschen?")) {
+                db.LoggedEntries = [];
+                saveData();
+                renderEntries();
+            }
         }
 
         function renderEntries() {
@@ -221,14 +234,44 @@
             });
         }
 
-        function exportData() {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
-            const downloadAnchor = document.createElement('a');
-            downloadAnchor.setAttribute("href", dataStr);
-            downloadAnchor.setAttribute("download", "history.json");
-            document.body.appendChild(downloadAnchor);
-            downloadAnchor.click();
-            downloadAnchor.remove();
+        // Neuer intelligenter Export für iOS/Safari: Öffnet direkt das Teilen-Menü von Apple
+        async function exportDataiOS() {
+            saveData();
+            const jsonText = JSON.stringify(db, null, 2);
+            const file = new File([jsonText], "history.json", { type: "application/json" });
+
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({
+                        files: [file],
+                        title: 'history.json',
+                        text: 'ArbeitszeitTagebuch Daten-Export'
+                    });
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        fallbackDownload(jsonText);
+                    }
+                }
+            } else {
+                fallbackDownload(jsonText);
+            }
+        }
+
+        function exportDataDirect() {
+            saveData();
+            fallbackDownload(JSON.stringify(db, null, 2));
+        }
+
+        function fallbackDownload(jsonText) {
+            const blob = new Blob([jsonText], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "history.json";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         function importData(event) {
