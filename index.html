@@ -145,7 +145,6 @@
     </div>
 
     <script>
-        // Exakte Europe-West1 URL aus deiner Firebase-Konsole
         const BASE_FIREBASE_URL = "https://arbeitszeittagebuch-default-rtdb.europe-west1.firebasedatabase.app"; 
         const FIREBASE_URL = BASE_FIREBASE_URL + "/.json";
 
@@ -161,7 +160,6 @@
             document.getElementById('timeFrom').value = "06:00";
             document.getElementById('timeTo').value = "08:00";
 
-            // 1. Zuerst lokales Backup laden
             let localData = localStorage.getItem('arbeitszeit_db');
             if (localData) {
                 try {
@@ -172,7 +170,6 @@
                 } catch(e){}
             }
 
-            // 2. Cloud abrufen
             loadFromFirebase();
         };
 
@@ -211,9 +208,12 @@
             const service = sSelect.value;
             aSelect.innerHTML = '';
             
-            if (!db || !db.ServiceToActivities) db.ServiceToActivities = {};
+            if (!service || !db || !db.ServiceToActivities || !db.ServiceToActivities[service]) {
+                updateDescriptions();
+                return;
+            }
+
             const activities = db.ServiceToActivities[service] || [];
-            
             activities.forEach(act => {
                 let opt = document.createElement('option');
                 opt.value = act;
@@ -231,9 +231,11 @@
             const activity = aSelect.value;
             dSelect.innerHTML = '';
 
-            if (!db || !db.ActivityToDescriptions) db.ActivityToDescriptions = {};
+            if (!activity || !db || !db.ActivityToDescriptions || !db.ActivityToDescriptions[activity]) {
+                return;
+            }
+
             const descriptions = db.ActivityToDescriptions[activity] || [];
-            
             descriptions.forEach(desc => {
                 let opt = document.createElement('option');
                 opt.value = desc;
@@ -273,7 +275,7 @@
                 }
             } catch (err) {
                 console.error("Firebase Ladefehler:", err);
-                setStatus("⚠️ Mobil-Fehler: " + (err.message || err), "#c62828", "#ffebee");
+                setStatus("⚠️ Ladefehler: " + (err.message || err), "#c62828", "#ffebee");
             }
         }
 
