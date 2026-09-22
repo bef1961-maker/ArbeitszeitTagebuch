@@ -186,11 +186,14 @@
 
         async function loadFromFirebase() {
             try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 7000);
-
-                const response = await fetch(FIREBASE_URL, { signal: controller.signal });
-                clearTimeout(timeoutId);
+                // iOS-kompatibler Abruf mit explizitem CORS-Header
+                const response = await fetch(FIREBASE_URL, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
 
                 if (response.ok) {
                     const data = await response.json();
@@ -207,11 +210,12 @@
                         setStatus("⚠️ Cloud ist noch leer! Bitte Punkt 4 (JSON importieren) nutzen.", "#e65100", "#fff3e0");
                     }
                 } else {
-                    setStatus("⚠️ Firebase Fehler " + response.status, "#c62828", "#ffebee");
+                    setStatus("⚠️ Firebase Fehler Status: " + response.status, "#c62828", "#ffebee");
                 }
             } catch (err) {
                 console.error("Firebase Ladefehler:", err);
-                setStatus("⚠️ Verbindung fehlgeschlagen! Bitte Netzwerk prüfen.", "#c62828", "#ffebee");
+                // Exakte Fehlermeldung vom iPhone anzeigen
+                setStatus("⚠️ Mobil-Fehler: " + (err.message || err), "#c62828", "#ffebee");
             }
         }
 
@@ -223,6 +227,7 @@
             try {
                 const response = await fetch(FIREBASE_URL, {
                     method: 'PUT',
+                    mode: 'cors',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(db)
                 });
@@ -386,6 +391,7 @@
             };
             reader.readAsText(event.target.files[0]);
         }
+    </script>
     </script>
 </body>
 </html>
